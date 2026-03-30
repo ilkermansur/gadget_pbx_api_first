@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: pbx-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-asterisk}
+      POSTGRES_USER: ${POSTGRES_USER:-asterisk}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-asterisk}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          memory: 512M
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  asterisk:
+    build:
+      context: ./asterisk
+    container_name: pbx-asterisk
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          memory: 1G
+    environment:
+      - ASTERISK_DB_USER=${ASTERISK_DB_USER:-asterisk}
+      - ASTERISK_DB_PASS=${ASTERISK_DB_PASS:-asterisk}
+    volumes:
+      - ./asterisk/asterisk.conf:/etc/asterisk/asterisk.conf
+      - ./asterisk/pjsip.conf:/etc/asterisk/pjsip.conf
+      - ./asterisk/extensions.conf:/etc/asterisk/extensions.conf
+      - ./asterisk/res_odbc.conf:/etc/asterisk/res_odbc.conf
+      - ./asterisk/res_config_odbc.conf:/etc/asterisk/res_config_odbc.conf
+      - ./asterisk/extconfig.conf:/etc/asterisk/extconfig.conf
+      - ./asterisk/sorcery.conf:/etc/asterisk/sorcery.conf
+      - ./asterisk/modules.conf:/etc/asterisk/modules.conf
+      - ./asterisk/cdr.conf:/etc/asterisk/cdr.conf
+      - ./asterisk/cdr_adaptive_odbc.conf:/etc/asterisk/cdr_adaptive_odbc.conf
+      - ./asterisk/cel_odbc.conf:/etc/asterisk/cel_odbc.conf
+      - ./asterisk/res_odbc_queue_log.conf:/etc/asterisk/res_odbc_queue_log.conf
+      - ./asterisk/odbc.ini:/etc/odbc.ini
+      - ./asterisk/odbcinst.ini:/etc/odbcinst.ini
+    network_mode: "host"
+
+  api:
+    build:
+      context: ./api
+    container_name: pbx-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          memory: 256M
+    ports:
+      - "8000:8000"
+
+volumes:
+  db_data:
