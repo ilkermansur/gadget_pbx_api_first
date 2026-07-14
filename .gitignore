@@ -47,3 +47,5 @@ docker-compose.override.yml
 db_data/
 asterisk/asterisk-*.tar.gz
 asterisk/pjproject-*.tar.bz2
+docs/recommendations.md
+
